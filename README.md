@@ -10,7 +10,7 @@ This is an anonymized template extracted from a real, daily-driven system. All I
 
 1. Connect your agent to Airtable (the Airtable MCP server, or a personal access token with schema + data read/write scopes).
 2. Give your agent this repo (clone it, or paste the raw file URLs) and say: **"Follow SETUP.md and build this CRM."**
-3. The agent creates the base, all six tables, and the links from [schema.json](schema.json), verifies the result against the spec, personalizes the choice lists with you, and installs [SKILL.md](SKILL.md) as its standing operating manual.
+3. The agent creates the base, all six tables, and the links from [schema.json](schema.json), verifies the result against the spec, personalizes the choice lists with you, and installs the skill folder as described in SETUP.md. Keep the supporting files beside SKILL.md so its references resolve; installing the task templates does not schedule them.
 
 After that, the skill is the product: every future conversation that mentions your contacts routes through it.
 
@@ -21,6 +21,7 @@ After that, the skill is the product: every future conversation that mentions yo
 | [SETUP.md](SETUP.md) | The build runbook: step-by-step instructions for an agent to create the base from scratch, verify it, and wire up the skill | Your agent, once |
 | [schema.json](schema.json) | Machine-readable spec of the full base: 6 tables, every field, type, choice list, and link — the single source of truth for setup | Your agent, during setup |
 | [SKILL.md](SKILL.md) | The operating manual the agent runs on every day afterward: API call patterns and gotchas, the language triggers, the standing workflows, data-quality rules | Your agent, every session |
+| [references/](references/) | Field semantics, connector access, and roster procedures, loaded only for the task that needs them | Your agent, as needed |
 | [roster-globs.md](roster-globs.md) | Design doc for the Rosters pattern — why name dumps are stored as single list records instead of contacts | You, if curious |
 | [scheduled-tasks/](scheduled-tasks/) | Three recurring-job specs that run against this schema unattended (see Scheduled automations below) | Your agent, on a schedule |
 
@@ -52,7 +53,7 @@ Two opinionated design choices worth knowing before you adopt it:
 - **Romantic-lane tracking** — a separate stage field (Interested → Flirting → Mutual → …) so that lane is queryable without polluting the friendship tiers.
 - **Remember the human details** — birthdays, partners' and kids' names, food preferences, how you met. Ask "what do I know about Sam?" before you see them again.
 - **Data quality on autopilot** — the skill carries standing rules (clubs are linked records, never text; never overwrite a filled field; flag instead of guess), and a periodic scan can tidy drift.
-- **Scheduled automations** (optional) — production-tested specs ship in [scheduled-tasks/](scheduled-tasks/): [weekly-social-engagement-nudge](scheduled-tasks/weekly-social-engagement-nudge/SKILL.md) (the "who's due" bump scan + open-Saturday social check), [monthly-crm-data-quality-scan](scheduled-tasks/monthly-crm-data-quality-scan/SKILL.md) (misfiled fields, stale records, old-interaction consolidation), and [weekly-changelog-consolidation](scheduled-tasks/weekly-changelog-consolidation/SKILL.md) (free-tier space management). The skill documents how to keep them from breaking when the schema evolves, and how to pick their execution environment: because the CRM's critical path is pure connector-MCP, these run on cloud/hosted schedulers with no desktop machine awake — only browser fallbacks and local-MCP notification channels require a local session.
+- **Scheduled automations** (optional) — templates ship in [scheduled-tasks/](scheduled-tasks/): [weekly-social-engagement-nudge](scheduled-tasks/weekly-social-engagement-nudge/SKILL.md) (the "who's due" bump scan + open-Saturday social check), [monthly-crm-data-quality-scan](scheduled-tasks/monthly-crm-data-quality-scan/SKILL.md) (misfiled fields and old-interaction consolidation), and [weekly-changelog-consolidation](scheduled-tasks/weekly-changelog-consolidation/SKILL.md) (free-tier space management). Configure and authorize each schedule separately. Verify that Airtable, Google Calendar where needed, and the notification channel are available in the chosen execution environment.
 
 All example names above are invented.
 

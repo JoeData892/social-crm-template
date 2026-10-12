@@ -1,6 +1,8 @@
 # SETUP.md — agent runbook: build this CRM from scratch
 
-This file is written **for the AI agent** doing the setup. If you are a human: connect your agent to your Airtable account (MCP server or a personal access token), point it at this repo, and say *"set up this CRM"* — the agent follows the steps below. Expected agent working time: a few minutes; your involvement: one or two confirmations.
+This file is written **for the AI agent** doing the setup. Connect the agent to Airtable,
+point it at this repo, and ask it to set up the CRM. Confirm access and the target workspace
+before creating the base.
 
 The source of truth for the base structure is [schema.json](schema.json). Do not improvise fields; build exactly what it specifies, then personalize the choice lists marked `"personalize": true` with the user.
 
@@ -60,7 +62,12 @@ Also ask whether the **Relationship Tier** and **Follow Up Frequency** ladders f
 
 ## Step 6 — Wire up the skill
 
-1. Copy [SKILL.md](SKILL.md) to wherever the user's agent loads skills from (a claude.ai account skill, a Claude Code skill folder, or your platform's equivalent).
+1. Install a `social-crm/` skill folder containing [SKILL.md](SKILL.md),
+   [schema.json](schema.json), [SETUP.md](SETUP.md), and the `references/` and
+   `scheduled-tasks/` folders,
+   preserving their relative paths. For archive-based runtimes, package that folder;
+   for local runtimes, copy it into the platform's skills directory. The scheduled
+   templates are reference files; copying them does not activate recurring runs.
 2. Fill in the placeholders in the copy: `<YOUR_BASE_ID>`, the table IDs (`<TBL_PEOPLE_ID>`, `<TBL_ROSTERS_ID>`), and the field/choice IDs referenced in the bump-scan section — all of them come from the `list_tables_for_base` / `get_table_schema` output you already have.
 3. **The filled-in copy is a credential-bearing private file** (if it embeds a token for the HTTP fallback). It must never be committed to any repo. Only this template, with placeholders, is publishable.
 4. Telegram placeholders are optional — skip them unless the user wants push summaries.
