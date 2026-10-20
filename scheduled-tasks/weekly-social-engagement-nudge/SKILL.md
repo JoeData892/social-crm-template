@@ -1,6 +1,6 @@
 ---
 name: weekly-social-engagement-nudge
-description: Check Building-tier CRM contacts due for follow-up and, if Saturday has no social event, suggest Local friends overdue for contact. Use when the user requests the weekly social nudge or an already configured task invokes it; deliver through the configured notification channel.
+description: List five CRM contacts due for a bump (Building tier first, topped up from Friend / Close Friend) and, if Saturday has no social event, suggest Local friends overdue for contact who are not already on that list. Use when the user requests the weekly social nudge or an already configured task invokes it; deliver through the configured notification channel.
 ---
 
 Requires a configured Social CRM base, current table/field/choice IDs, Google Calendar
@@ -16,7 +16,7 @@ For every fetch below, use the connector's supported page size and follow all pa
 cursors before client-side ranking, filtering or selecting recent interactions. If the
 notifier is unavailable or unauthorized, return the report in the current session.
 
-There are **two independent checks**: the **Building bump scan (STEP 1) runs every week no matter what**, and the **weekend-social nudge (STEPS 2–3) only runs if Saturday is open**. They are combined into one Telegram in STEP 4.
+There are **two independent checks**: the **friends bump scan (STEP 1) runs every week no matter what**, and the **weekend-social nudge (STEPS 2–3) only runs if Saturday is open**. They are combined into one Telegram in STEP 4.
 
 If the Airtable MCP tools aren't loaded:
 ```
@@ -25,16 +25,18 @@ ToolSearch { query: "select:mcp__<airtable-mcp-server-id>__list_records_for_tabl
 
 ---
 
-## STEP 1 — Building-tier bump scan (ALWAYS runs)
+## STEP 1 — Friends bump scan (ALWAYS runs)
 
-"Building" is the Relationship Tier for people the user is actively turning into friends — not friends yet, but he wants to keep the energy up. Each has a personal cadence in the **Follow Up Frequency** field. This step flags the ones who've gone quiet past *their own* cadence.
+"Building" is the Relationship Tier for people the user is actively turning into friends — not friends yet, but the user wants to keep the energy up. They come first. Friend and Close Friend people top the list up, so the user always gets a full list of five to reach out to even in a week when few Building people are due. Each person has a personal cadence in the **Follow Up Frequency** field. This step ranks them by how far past *their own* cadence they've gone.
 
 Call `mcp__<airtable-mcp-server-id>__list_records_for_table` with:
 - `baseId`: `<YOUR_BASE_ID>`
 - `tableId`: `<TBL_PEOPLE_ID>` (People)
-- `filters`: `{operator: "and", operands: [{operator: "isAnyOf", operands: ["<FIELD_ID>", ["<CHOICE_ID>"]]}]}` (Relationship Tier = Building)
-- `fieldIds`: `["<FIELD_ID>", "<FIELD_ID>", "<FIELD_ID>", "<FIELD_ID>", "<FIELD_ID>"]` (Name, Last Contacted, Follow Up Frequency, Location, Phone)
+- `filters`: `{operator: "and", operands: [{operator: "isAnyOf", operands: ["<FIELD_ID>", ["<CHOICE_ID>", "<CHOICE_ID>", "<CHOICE_ID>"]]}]}` (Relationship Tier = Building, Friend or Close Friend)
+- `fieldIds`: `["<FIELD_ID>", "<FIELD_ID>", "<FIELD_ID>", "<FIELD_ID>", "<FIELD_ID>", "<FIELD_ID>"]` (Name, Last Contacted, Follow Up Frequency, Location, Phone, Relationship Tier)
 - `pageSize`: the connector's supported size
+
+Put each returned person in one of two groups by Relationship Tier: **BUILDING** (Building) or **TOP-UP** (Friend or Close Friend).
 
 For each returned person, compute whether they're **due for a bump**, client-side:
 
@@ -48,14 +50,23 @@ For each returned person, compute whether they're **due for a bump**, client-sid
    - `Twice a year` → 182
    - `Annual / Life events` → 365
    - `As needed` → **skip this person entirely** (no auto-surfacing)
-   - **unset / blank** → default 30 (a warm prospect with no cadence still surfaces; note "no cadence set")
+   - **unset / blank** → default 30 (someone with no cadence still surfaces; note "no cadence set")
 2. **Days since contact**: `today − Last Contacted`. If Last Contacted is blank → treat as **never contacted** (always due, highest priority).
 3. **Due** if never contacted, OR `daysSinceContact >= cadenceDays`.
-4. Sort the due people: never-contacted first, then by **most overdue** (`daysSinceContact − cadenceDays`) descending. Cap at **7**.
+4. **Overdue number** = `daysSinceContact − cadenceDays` (negative for someone not yet due). Sort each group: never-contacted first, then by overdue number, highest first. People who are not yet due stay in the sorted list after the due ones, so the list can still reach five.
 
-Hold this list for STEP 4. If nobody is due, the bump section is simply omitted.
+**The five-person list.** Fill **exactly five** numbered entries, in this order, stopping at five:
+1. due BUILDING people;
+2. due TOP-UP people;
+3. everyone left in both groups together (not yet due), by overdue number, highest first.
 
-**Choice-ID drift:** if the Building filter returns nothing unexpectedly, re-fetch IDs via `get_table_schema` with `tables: [{tableId: "<TBL_PEOPLE_ID>", fieldIds: ["<FIELD_ID>", "<FIELD_ID>"]}]` and retry once.
+Fewer than five only when both groups together hold fewer than five people; the STEP 5 report says so.
+
+**Overflow** = due BUILDING people who did not fit in the five. Friend / Close Friend people never go on the overflow line.
+
+Hold this list for STEP 4. If both groups are empty, the bump section is simply omitted.
+
+**Choice-ID drift:** if the tier filter returns nothing unexpectedly, re-fetch IDs via `get_table_schema` with `tables: [{tableId: "<TBL_PEOPLE_ID>", fieldIds: ["<FIELD_ID>", "<FIELD_ID>"]}]` and retry once.
 
 ---
 
@@ -95,6 +106,8 @@ Call `mcp__<airtable-mcp-server-id>__list_records_for_table` with:
 
 The MCP server's sort param has been unreliable; sort client-side instead. Sort the records so `Last Contacted` ascending — records with **no** Last Contacted (never contacted) come first, then oldest to newest. Take the first 5.
 
+**No repeats:** anyone already shown in Section A (STEP 1) is skipped here; take the next ranked person instead.
+
 **Choice ID verification:** if the Local tag choice ID changes (the user renames it, or you suspect a stale ID), call `get_table_schema` with `tables: [{tableId: "<TBL_PEOPLE_ID>", fieldIds: ["<FIELD_ID>", "<FIELD_ID>"]}]` to re-fetch current choice IDs. Same if Relationship Tier choices shift.
 
 **If the Airtable MCP errors or returns nothing on either pull:** retry the call once, and re-fetch choice IDs via `get_table_schema` if a filter returned zero records unexpectedly. If it still fails, report which CRM pull failed and exit; use Telegram only through the configured, authorized channel. Do NOT fall back to Chrome or direct API calls — the MCP connector is the only Airtable path for this task.
@@ -128,23 +141,24 @@ one supported option; use its configured recipient, never an inferred destinatio
 
 Assemble the message from whichever sections apply:
 
-**Section A — Building bumps (include only if STEP 1 found due people):**
+**Section A — Friends bumps (include only if the STEP 1 five-person list is non-empty):**
 ```
-🌱 *Warm prospects due for a bump*
+🌱 *Friends due for a bump*
 
-People you're building with who've gone quiet past their cadence:
+People you're building with first, then friends you haven't caught up with lately:
 
 1. *<Name>* — <Follow Up Frequency or "no cadence set">; last contact <YYYY-MM-DD> (<N>d ago, <M>d overdue)
-2. ...
+2. *<Name>* (<Friend|Close Friend>) — ...
 ```
-For never-contacted, write `never contacted yet — kick it off` instead of the date/overdue part.
+Building people come first with no tier tag; Friend / Close Friend people carry their tier in brackets. For anyone not yet due, write `(<N>d ago, due in <D>d)` instead of the overdue part. For never-contacted, write `never contacted yet — kick it off` instead of the date/overdue part.
+Overflow (see STEP 1 "Overflow"): `+<N> more building prospects due (<Name>, <Name>)`. Only due Building names may appear on this line.
 **Opener line (Sections A and B):** if STEP 3.5 found hooks for a shown person, add one indented line directly under their entry: `   💬 Ask about: <hook>; <hook> (from <YYYY-MM-DD>)`.
 
 **Section B — Weekend social (include only if Saturday was open, STEP 3 ran):**
 ```
 🍹 *Weekend Social Check — Saturday is open!*
 
-Your calendar is free Saturday. Here are 5 friends to reach out to for Friday drinks or Saturday brunch:
+Your calendar is free Saturday. Here are <N> friends to reach out to for Friday drinks or Saturday brunch:
 
 1. *<Name>* — last contact: <YYYY-MM-DD> · <Follow Up Frequency>
    📍 <Location>
@@ -157,14 +171,15 @@ If Last Contacted is null, write `never contacted`. If Follow Up Frequency is nu
 **Combining rules:**
 - Both sections apply → send Section A, then a blank line, then Section B.
 - Only one applies → send just that one.
-- **Neither applies** (no bumps due AND Saturday is booked) → send a short confirmation: `✅ You're already social this Saturday — <event name>. And no warm-prospect bumps are due. Nothing to chase this week!`
+- `<N>` in Section B is the real count after the No-repeats skip. If that leaves zero, replace Section B with one line: `🍹 Saturday is open, but everyone local is already in the list above.`
+- **Neither applies** (Section A omitted AND Saturday is booked) → send a short confirmation: `✅ You're already social this Saturday — <event name>. And nobody is due for a bump. Nothing to chase this week!`
 - If a section could not be checked, state that limitation rather than using the
   "nothing due" confirmation. Show however many candidates were found, even if fewer
   than the output cap.
 
 ## STEP 5 — Report
 
-Brief summary of what was sent: the Building bump names (if any) and the 5 weekend names (if sent), plus how many got an opener line (STEP 3.5).
+Brief summary of what was sent: the bump names split into Building vs Friend / Close Friend top-up, whether the list reached five (and if not, that both groups ran out), the weekend names (if sent), plus how many got an opener line (STEP 3.5).
 
 ## Notes
 - **Airtable MCP is the only CRM path for this task.** If it is unavailable after the
