@@ -1,0 +1,11 @@
+# Supabase CLI project config. Only the settings this project depends on are
+# listed; the CLI fills in defaults for the rest.
+project_id = "social-crm"
+
+# The iPhone Shortcuts authenticate with the x-crm-key shared secret instead of
+# a Supabase JWT, so the gateway must not require one.
+[functions.ingest]
+verify_jwt = false
+
+[functions.ask]
+verify_jwt = false
