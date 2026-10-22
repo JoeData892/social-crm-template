@@ -1,0 +1,4 @@
+{
+  "fmt": { "lineWidth": 130, "include": ["supabase/"] },
+  "lint": { "include": ["supabase/"] }
+}

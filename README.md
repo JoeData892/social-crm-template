@@ -1,76 +1,108 @@
-# social-crm-template
+# Voice Social CRM
 
-![Illustrated Social CRM example with a fictional contact, group and interaction](assets/example-output.png)
+A personal CRM for the people in your life that you fill in by talking. Press a
+button on your iPhone, say what happened (*"Had coffee with Marcus. He's
+interviewing at Stripe next week and his daughter Ellie starts kindergarten in
+September"*), and Claude files it: Marcus's record updated, Ellie added to his
+family, the coffee logged, and "Stripe interview" and "Ellie starting
+kindergarten" saved as follow-ups to ask about next time. A second button
+answers questions: *"Seeing Marcus tonight, what should I ask him?"*
 
-A personal social CRM that lives in Airtable and is operated entirely by an AI agent (built for Claude; portable to any agent that can call the Airtable API). You talk to your agent in plain language — *"met a guy named Sam at the climbing gym, seemed cool"*, *"glob this list"*, *"who am I letting go cold?"* — and the agent maintains the database: contacts, groups, events, an interaction log, name lists, and an audit trail.
+Built on [social-crm-template](https://github.com/dtiger1889-ops/social-crm-template)
+(Airtable + agent skill), rebuilt on Supabase for voice capture.
 
-This is an anonymized template extracted from a real, daily-driven system. All IDs, tokens, and values are placeholders or invented; you supply your own base and your own people.
+## How it works
 
-## Quickstart: point your agent at this repo
+```
+iPhone Shortcut ── dictated text + phone clock ──▶ Edge Function `ingest`
+                                                      │ 1. save raw transcript (never lost)
+                                                      │ 2. Claude: resolve names, build a plan
+                                                      │ 3. crm_apply_plan(): one transaction,
+                                                      │    rules enforced in the database
+                                                      ▼
+◀── notification: what was filed + questions ──  Postgres (Supabase) + pgvector
 
-1. Connect your agent to Airtable (the Airtable MCP server, or a personal access token with schema + data read/write scopes).
-2. Give your agent this repo (clone it, or paste the raw file URLs) and say: **"Follow SETUP.md and build this CRM."**
-3. The agent creates the base, all six tables, and the links from [schema.json](schema.json), verifies the result against the spec, personalizes the choice lists with you, and installs the skill folder as described in SETUP.md. Keep the supporting files beside SKILL.md so its references resolve; installing the task templates does not schedule them.
+iPhone Shortcut ── question ──▶ Edge Function `ask` (read-only tools) ──▶ answer
+Claude (chat) ── social-crm skill ──▶ same database, same crm_apply_plan()
+```
 
-After that, the skill is the product: every future conversation that mentions your contacts routes through it.
+- **Capture** (`supabase/functions/ingest`): stores your words first, then gives
+  Claude your contact directory, groups and recent events so it can resolve
+  "Sam", "BKB" or a misheard "Shawn". Claude can look people up, then submits one
+  structured **plan** for the whole note.
+- **Rules live in the database** (`crm_apply_plan` in the migration), not just in
+  a prompt. Filled fields are never overwritten unless you're explicitly
+  correcting them (otherwise it asks you). Lists and links only grow. Last
+  Contacted never moves backward. Name lists need an anchor. Every change is
+  logged with its source note. A plan that breaks a rule is rejected as a whole,
+  and Claude gets the error and fixes the plan.
+- **Ambiguity is a question, not a guess.** Two Chrises → it files everything
+  else and asks you which one in the notification.
+- **Retrieval** (`supabase/functions/ask`) combines keyword search and search by
+  meaning over interactions, follow-ups, original transcripts and profiles, plus
+  tools for "who's overdue", birthdays, recent interactions and name lists.
 
-## What's in the repo
+## Data model
 
-| File | What it is | Who reads it |
-|---|---|---|
-| [SETUP.md](SETUP.md) | The build runbook: step-by-step instructions for an agent to create the base from scratch, verify it, and wire up the skill | Your agent, once |
-| [schema.json](schema.json) | Machine-readable spec of the full base: 6 tables, every field, type, choice list, and link — the single source of truth for setup | Your agent, during setup |
-| [SKILL.md](SKILL.md) | The operating manual the agent runs on every day afterward: API call patterns and gotchas, the language triggers, the standing workflows, data-quality rules | Your agent, every session |
-| [references/](references/) | Field semantics, connector access, and roster procedures, loaded only for the task that needs them | Your agent, as needed |
-| [roster-globs.md](roster-globs.md) | Design doc for the Rosters pattern — why name dumps are stored as single list records instead of contacts | You, if curious |
-| [scheduled-tasks/](scheduled-tasks/) | Three recurring-job specs that run against this schema unattended (see Scheduled automations below) | Your agent, on a schedule |
+| Table | What |
+|---|---|
+| `people` | One per person: contact info, job, location, birthday, how you met, relationship tier, follow-up cadence, interests, family and pets, history |
+| `groups` | Clubs, teams, friend groups, group chats, workplaces, linked to people |
+| `events` | Parties, trips, weddings, with who was there |
+| `interactions` | Dated log of real contact (in person, call, text…) with participants |
+| `hooks` | Follow-ups from an interaction ("moving to Denver in May"), open until resolved |
+| `rosters` | Name lists from events, kept as text so 40 sign-ups don't become 40 contacts; recurring names surface for promotion |
+| `voice_notes` | Every transcript, its status (`done`, `needs_review`, `error`) and the reply you got |
+| `changelog` | Audit trail of every change and why |
+| `relationship_tiers`, `follow_up_cadences` | Editable choice lists (Close Friend … Building …; Weekly … Yearly) |
 
-## The data model
+Changes from the template: Supabase instead of Airtable (no record or API-call
+caps, search by meaning, an atomic write path); follow-ups have their own table;
+raw transcripts are kept; the romantic-interest field was removed; first meetings
+are also logged as interactions so follow-ups from them aren't lost.
 
-Six tables:
+## Setup
 
-- **People** — one record per person: contact info, relationship tier, per-person follow-up cadence, romantic-interest stage, likes, family, how you met, last contacted.
-- **Groups** — clubs, communities, friend groups, workplaces; linked from People.
-- **Events** — parties, trips, gatherings; links the People who were there and can anchor a Roster.
-- **Interactions** — dated log of real-world contact (met up, called, texted), linked to People. This is what powers the "going cold" math.
-- **Rosters** — raw name lists from events kept as *text*, not contacts. Most names on a list never deserve a record; the roster preserves them so recurrence is detectable months later.
-- **Changelog** — audit trail of what the agent changed and why, so you can review its work.
+[docs/setup.md](docs/setup.md) covers the Supabase project, keys and deploy, then
+[docs/iphone-shortcuts.md](docs/iphone-shortcuts.md) covers the two buttons.
+Optional: the [Claude skill](skill/social-crm/SKILL.md) for asking and editing in
+a regular Claude chat.
 
-Two opinionated design choices worth knowing before you adopt it:
+## Cost
 
-- **Capture is asymmetric with retrieval.** Adding data must be effortless (one sentence to your agent, often from a phone on the way home) or it won't happen. The schema is therefore optimized for the agent to file things into structured fields for you — the standing rule is that the Notes field is a last resort.
-- **Not every name becomes a contact.** The Rosters table exists so an 80-name sign-up list costs one record, not 80. Names are promoted to People only when they keep showing up and you say so.
+Supabase's free tier covers the database and functions. Claude API usage is
+pay-per-use. With the default model (Claude Opus 5.5 at medium effort), expect
+roughly **$0.10–0.20 per voice note** and a few cents per question; the cost grows
+slowly with the size of your contact list. Set `CRM_MODEL` to a smaller model,
+or `CRM_INGEST_EFFORT=low`, to trade some filing quality for cost. Set a spend
+limit in the Anthropic console either way.
 
-## What you actually use it for
+## Security and privacy
 
-- **Capture on the go** — "Met Priya at Jordan's birthday thing, she's in the Sunday soccer group, works in urban planning. Add her." The agent creates the record, links the group, cross-references past rosters for her name, and logs the addition.
-- **Log interactions** — "Had lunch with Marcus." One Interaction record, Last Contacted updated. Anything forward-looking they mentioned goes into its own Follow-up Hooks field, one topic per line.
-- **Recall before you meet** — "Seeing Marcus tonight." The agent pulls your last few interactions with that person and leads with the open follow-up hooks, so you walk in knowing what to ask about. The weekly nudge attaches the same hooks to each person it tells you to reach out to.
-- **The bump scan** — "Who am I letting go cold?" Every person carries their own follow-up cadence (weekly for the friendship you're building, twice a year for the college friend). The agent computes who's overdue and hands you a ranked list with phone numbers.
-- **Glob a roster** — Paste the event sign-up list or the names you half-remember from a party. One record, zero contact spam.
-- **Recurrence detection** — "Anyone keep showing up?" The agent scans all rosters for names that appear again and again and proposes promoting them to real contacts, with the history attached ("on 4 lists since January").
-- **Intentional friendship-building** — the `Building` tier + a cadence marks someone you've decided to invest in, and keeps them surfacing until they've graduated to Friend.
-- **Romantic-lane tracking** — a separate stage field (Interested → Flirting → Mutual → …) so that lane is queryable without polluting the friendship tiers.
-- **Remember the human details** — birthdays, partners' and kids' names, food preferences, how you met. Ask "what do I know about Sam?" before you see them again.
-- **Data quality on autopilot** — the skill carries standing rules (clubs are linked records, never text; never overwrite a filled field; flag instead of guess), and a periodic scan can tidy drift.
-- **Scheduled automations** (optional) — templates ship in [scheduled-tasks/](scheduled-tasks/): [weekly-social-engagement-nudge](scheduled-tasks/weekly-social-engagement-nudge/SKILL.md) (the "who's due" bump scan + open-Saturday social check), [monthly-crm-data-quality-scan](scheduled-tasks/monthly-crm-data-quality-scan/SKILL.md) (misfiled fields, old-interaction consolidation, and Changelog consolidation for free-tier space). Configure and authorize each schedule separately. Verify that Airtable, Google Calendar where needed, and the notification channel are available in the chosen execution environment.
+- **Locked database.** Row-level security is on for every table with no policies,
+  and the public `anon`/`authenticated` roles have no privileges. Only the Edge
+  Functions (service role) and you (dashboard or owner connection) can read or
+  write.
+- **Endpoint auth.** Every request must carry your shared secret in `x-crm-key`,
+  compared in constant time. Bodies are size-limited. No CORS, so web pages can't
+  call it from a browser.
+- **Secrets.** Keys live in Supabase function secrets, never in the repo
+  (`.env` is git-ignored). The secret is also stored in your two Shortcuts, so
+  don't share them.
+- **Least privilege.** `ask` has read-only tools. `ingest` has exactly one write
+  path, the validated plan.
+- **Logs.** Functions log errors, never transcripts.
+- **What leaves your phone.** The dictated text (Apple's dictation runs
+  on-device or with Apple, per your iPhone settings) goes to your Supabase
+  project and, for processing, to the Anthropic API. It is about real people;
+  treat the database accordingly.
 
-All example names above are invented.
+## Tests
 
-## Requirements
-
-- An Airtable account (free tier works; the Rosters design exists partly to respect free-tier record limits).
-- An agent with Airtable access: Claude with the Airtable MCP server is the tested path; anything that can call the Airtable REST API can run the same playbook via the endpoints in SETUP.md.
-- Optional: a Telegram bot for push summaries of batch operations.
-
-## Privacy notes
-
-This system stores real information about real people in your life on a third-party service, operated by an AI agent. Three ground rules from the source system:
-
-- **Never commit your filled-in copy of SKILL.md** — once the placeholders are real IDs (and possibly a token), it's a credential-bearing private file.
-- Keep the base private; the agent needs API access, not the world.
-- The Changelog table exists so you can audit what the agent did — read it occasionally.
+`supabase/tests/run.sh` runs the database behavior tests and end-to-end tests of
+both endpoints (Docker Postgres/pgvector + PostgREST, scripted Claude stand-in;
+no keys needed).
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE). Original template © 2026 Daniel Mack.

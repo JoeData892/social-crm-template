@@ -1,0 +1,10 @@
+# Secrets
+.env
+*.env
+!*.env.example
+supabase/functions/.env
+supabase/.temp/
+supabase/.branches/
+# Editors / OS
+.DS_Store
+.vscode/
