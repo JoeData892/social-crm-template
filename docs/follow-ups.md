@@ -126,7 +126,9 @@ New Shortcut named exactly **Follow-ups** (the notification opens it by name):
 Text and Call record that you reached out (it counts as contact and closes the
 follow-up), so you don't need to record a note too. When a follow-up involves
 two people or a contact has no phone number, the URL is empty; pick Done after
-you've reached out another way. If nothing is due, step 4 shows an empty list.
+you've reached out another way. Birthdays and other dates are only due on the
+day; any choice clears one from the list for the rest of that day. If nothing
+is due, step 4 shows an empty list.
 
 Asking works too: *"What follow-ups are coming up this week?"* in Ask CRM.
 
