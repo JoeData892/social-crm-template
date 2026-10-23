@@ -485,9 +485,21 @@ Deno.test("followups: Shortcut list and actions", async () => {
     const after = await (await post({ action: "list", now: "2026-11-15T12:10:00-05:00" })).json();
     assert(after.count === 1 && !after.menu["Sam Rivera: Philly marathon"], "handled item drops off the list");
 
-    const bad = await post({ action: "send_for_me", kind: "follow_up", id: marathon.id });
+    const bad = await post({ action: "send_for_me", kind: "", id: "five" });
+    const badBody = await bad.json();
     assert(bad.status === 400, `unknown action rejected: ${bad.status}`);
-    await bad.body?.cancel();
+    assert(
+      badBody.message === `Couldn't understand action "send_for_me" (expected done, snooze, dismiss, texted or called); ` +
+          `kind "" (expected follow_up, birthday or date); id "five" (expected a number).`,
+      `error names each bad field: ${badBody.message}`,
+    );
+
+    // What a Shortcut tends to send: menu wording, capitals, id as text.
+    const gunks = Object.values(list.menu).find((i) => (i as { label: string }).label.includes("Gunks")) as { id: number };
+    const lenient =
+      await (await post({ action: "Snooze a week", kind: "Follow_Up", id: String(gunks.id), now: "2026-11-15T12:15:00-05:00" }))
+        .json();
+    assert(lenient.ok && lenient.message === "Snoozed until Sun Nov 22.", JSON.stringify(lenient));
     const unauth = await post({ action: "list" }, "wrong");
     assert(unauth.status === 401, "needs the shared secret");
     await unauth.body?.cancel();

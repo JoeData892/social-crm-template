@@ -12,7 +12,6 @@
 //
 // No Claude calls: everything is decided in the database.
 
-import { z } from "../_shared/deps.ts";
 import { handle, HttpError, json, localToday, readJson, requireSecret } from "../_shared/http.ts";
 import { db, rpc } from "../_shared/db.ts";
 import { pushover } from "../_shared/pushover.ts";
@@ -32,11 +31,42 @@ const NUDGE_HOUR = Number(Deno.env.get("CRM_NUDGE_HOUR") ?? 9);
 const NUDGE_WINDOW_HOURS = 3;
 const SHORTCUT = Deno.env.get("CRM_FOLLOWUPS_SHORTCUT") ?? "Follow-ups";
 
-const Action = z.object({
-  action: z.enum(["done", "snooze", "dismiss", "texted", "called"]),
-  kind: z.enum(["follow_up", "birthday", "date"]),
-  id: z.number().int(),
-});
+// Shortcuts makes it easy to send "Done", the menu wording, or the id as text;
+// accept those rather than failing.
+const ACTIONS: Record<string, "done" | "snooze" | "dismiss" | "texted" | "called"> = {
+  done: "done",
+  complete: "done",
+  completed: "done",
+  snooze: "snooze",
+  "snooze a week": "snooze",
+  dismiss: "dismiss",
+  "not relevant": "dismiss",
+  texted: "texted",
+  text: "texted",
+  called: "called",
+  call: "called",
+};
+const KINDS = ["follow_up", "birthday", "date"] as const;
+
+function words(v: unknown): string {
+  return typeof v === "string" || typeof v === "number" ? String(v).trim().toLowerCase().replace(/\s+/g, " ") : "";
+}
+
+// Returns the normalized action, or a message naming what was wrong with it.
+function parseAction(body: Record<string, unknown>) {
+  const action = ACTIONS[words(body.action)];
+  const kindText = words(body.kind).replace(/[\s-]+/g, "_").replace(/^followup$/, "follow_up");
+  const kind = KINDS.find((k) => k === kindText);
+  const id = typeof body.id === "number" ? body.id : /^\d+$/.test(words(body.id)) ? Number(words(body.id)) : NaN;
+
+  const problems = [
+    action ? "" : `action "${body.action ?? ""}" (expected done, snooze, dismiss, texted or called)`,
+    kind ? "" : `kind "${body.kind ?? ""}" (expected follow_up, birthday or date)`,
+    Number.isInteger(id) ? "" : `id "${body.id ?? ""}" (expected a number)`,
+  ].filter(Boolean);
+  if (problems.length) return { error: `Couldn't understand ${problems.join("; ")}.` };
+  return { action: action!, kind: kind!, id };
+}
 
 function pushLine(r: Reminder): string {
   if (r.kind === "follow_up") return `• Ask ${r.people} about ${r.what}${r.detail ? ` (${r.detail})` : ""}`;
@@ -62,7 +92,9 @@ Deno.serve(handle(async (req) => {
   const { date, hour } = localToday(body.now);
   const client = db();
 
-  if (body.action === "nudge") {
+  const verb = words(body.action);
+
+  if (verb === "nudge") {
     if (hour < NUDGE_HOUR || hour >= NUDGE_HOUR + NUDGE_WINDOW_HOURS) {
       return json({ ok: true, status: "outside_window" });
     }
@@ -97,7 +129,7 @@ Deno.serve(handle(async (req) => {
     }
   }
 
-  if (body.action === "list") {
+  if (verb === "list") {
     const due = await rpc<Reminder[]>(client, "crm_due_reminders", { p_today: date, p_for_push: false });
     const menu: Record<string, ReturnType<typeof menuItem>> = {};
     for (const r of due) {
@@ -108,9 +140,9 @@ Deno.serve(handle(async (req) => {
     return json({ ok: true, count: due.length, message: due.length ? "" : "Nothing to follow up on today.", menu });
   }
 
-  const parsed = Action.safeParse(body);
-  if (!parsed.success) throw new HttpError(400, "Unknown action.");
-  const { action, kind, id } = parsed.data;
+  const parsed = parseAction(body);
+  if ("error" in parsed) throw new HttpError(400, parsed.error!);
+  const { action, kind, id } = parsed;
   const { data, error } = await client.rpc("crm_follow_up_action", { p_kind: kind, p_id: id, p_action: action, p_today: date });
   if (error) throw new HttpError(400, error.message);
   return json(data);
