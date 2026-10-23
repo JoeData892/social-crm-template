@@ -10,27 +10,33 @@ your shared secret from setup.
 > these Shortcuts (a shared iCloud link would include the secret). If one leaks,
 > rotate the secret (see setup) and edit both Shortcuts.
 
+In the steps below, ⌨️ means type exactly the text shown, and 🔵 means insert
+a variable: tap the field and pick the blue token from the bar above the
+keyboard, or **Select Variable**. Never type a variable's name; typed text is
+taken literally. Recent iOS renamed a few actions: **Show Result** is now
+**Show Content**, and Choose from List's output is **Selected Item**.
+
 ## CRM Note
 
 New Shortcut → name it **CRM Note**, then add these actions in order:
 
 1. **Dictate Text**. Tap the arrow to expand it: Language = English, **Stop
    Listening = On Tap** (lets you pause mid-thought; tap Done when finished).
-2. **Copy to Clipboard** (input: *Dictated Text*). This is a safety net: if you
+2. **Copy to Clipboard** (input: 🔵 *Dictated Text*). This is a safety net: if you
    have no signal, the words are still on your clipboard.
 3. **Current Date**.
-4. **Format Date** (input: *Date*). Date Format = **ISO 8601**, Include ISO 8601
+4. **Format Date** (input: 🔵 *Date*). Date Format = **ISO 8601**, Include ISO 8601
    Time = **on**. This lets "yesterday" and "on Friday" resolve in your time zone.
 5. **Get Contents of URL**
-   - URL: `https://<project-ref>.supabase.co/functions/v1/ingest`
+   - URL: ⌨️ `https://<project-ref>.supabase.co/functions/v1/ingest`
    - Method: **POST**
-   - Headers: add `x-crm-key` = *your shared secret*
+   - Headers: add ⌨️ `x-crm-key` = ⌨️ your shared secret (pasted)
    - Request Body: **JSON**, with two Text fields:
-     - `text` = *Dictated Text*
-     - `now` = *Formatted Date*
-6. **Get Dictionary Value**: Get **Value** for key `message` in *Contents of URL*.
-7. **Show Notification** (body: *Dictionary Value*). Or use **Show Result** if you
-   want it to stay on screen.
+     - key ⌨️ `text` = 🔵 *Dictated Text*
+     - key ⌨️ `now` = 🔵 *Formatted Date*
+6. **Get Dictionary Value**: Get **Value** for key ⌨️ `message` in 🔵 *Contents of URL*.
+7. **Show Notification** (body: 🔵 *Dictionary Value*). Or use **Show Content**
+   (formerly **Show Result**) if you want it to stay on screen.
 
 The notification tells you what was filed, plus questions when something was
 ambiguous, e.g.
@@ -51,10 +57,12 @@ New Shortcut → **Ask CRM**:
 
 1. **Dictate Text** (Stop Listening = After Pause).
 2. **Current Date** → **Format Date** (ISO 8601, include time), as above.
-3. **Get Contents of URL**: URL `…/functions/v1/ask`, Method POST, header
-   `x-crm-key`, JSON body `question` = *Dictated Text*, `now` = *Formatted Date*.
-4. **Get Dictionary Value**: key `answer`.
-5. **Show Result** (or **Speak Text** for hands-free use).
+3. **Get Contents of URL**: URL ⌨️ `…/functions/v1/ask`, Method POST, header
+   ⌨️ `x-crm-key` = ⌨️ your secret, JSON body: key ⌨️ `question` = 🔵 *Dictated Text*,
+   key ⌨️ `now` = 🔵 *Formatted Date*.
+4. **Get Dictionary Value**: **Value** for key ⌨️ `answer` in 🔵 *Contents of URL*.
+5. **Show Content** (formerly **Show Result**) with 🔵 *Dictionary Value*, or
+   **Speak Text** for hands-free use.
 
 Things to ask: *"Seeing Sam tonight, what should I ask him about?"*, *"Who am I
 letting go cold?"*, *"Who did I meet at the climbing gym?"*, *"Any birthdays this

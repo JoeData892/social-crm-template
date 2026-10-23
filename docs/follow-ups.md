@@ -99,36 +99,127 @@ curl -s -X POST https://YOUR_PROJECT_REF.supabase.co/functions/v1/followups \
 
 ### 4. The Follow-ups Shortcut
 
-New Shortcut named exactly **Follow-ups** (the notification opens it by name):
+New Shortcut named exactly **Follow-ups** (the notification opens it by name).
 
-1. **Current Date** → **Format Date** (ISO 8601, include time).
-2. **Get Contents of URL**: `https://YOUR_PROJECT_REF.supabase.co/functions/v1/followups`,
-   Method **POST**, header `x-crm-key` = your secret, JSON body: `action` = `list`,
-   `now` = *Formatted Date*.
-3. **Get Dictionary Value**: key `menu` from *Contents of URL*.
-4. **Choose from List** (input: *Dictionary Value*). It shows one line per item.
-5. **Get Dictionary Value**: **Value** for key *Chosen Item* in the `menu`
-   dictionary from step 3. This gives you the item (with `kind`, `id`,
-   `sms_url`, `tel_url`). If your iOS version's Choose from List already
-   returns the item rather than its label, skip this step and use *Chosen Item*
-   as the item below.
-6. **Choose from Menu** with five options: **Text**, **Call**, **Done**,
-   **Snooze a week**, **Not relevant**. Under each option, add:
-   - **Get Contents of URL** (same URL and header), JSON body: `action` =
-     `texted` / `called` / `done` / `snooze` / `dismiss` respectively,
-     `kind` = *item*'s `kind`, `id` = *item*'s `id` (Number), `now` =
-     *Formatted Date*.
-   - Text only: then **Open URLs** with *item*'s `sms_url`. This opens Messages
-     to them; you write and send.
-   - Call only: then **Open URLs** with *item*'s `tel_url`.
-   - Others: **Show Notification** with the `message` from the response.
+**How to read the values below:**
+
+- ⌨️ **typed**: type exactly the text shown.
+- 🔵 **variable**: don't type it. Tap the field, then pick the blue token from
+  the bar above the keyboard, or tap **Select Variable** and tap the action that
+  produces it. A typed word that looks like a variable name ("Chosen Item")
+  is just text, and the Shortcut will silently get nothing.
+
+**Names differ between iOS versions.** The output of Choose from List is
+**Selected Item** on newer iOS (**Chosen Item** on older). **Show Content** is
+the newer name for **Show Result**. When a token is just called **Dictionary
+Value**, it means the most recent Get Dictionary Value above it. Tap the token
+to see which action it highlights, and re-select it if it's the wrong one.
+
+#### Part A: fetch today's list
+
+| # | Action | Settings |
+|---|---|---|
+| 1 | **Date** (may be called **Current Date**) | 🔵 **Current Date** |
+| 2 | **Format Date** | input 🔵 **Date**; Date Format **ISO 8601**; Include ISO 8601 Time **on** |
+| 3 | **Set Variable** | name ⌨️ `Now`; input 🔵 **Formatted Date** |
+| 4 | **Get Contents of URL** | URL ⌨️ `https://YOUR_PROJECT_REF.supabase.co/functions/v1/followups`; Method **POST**; Header key ⌨️ `x-crm-key`, value ⌨️ your shared secret; Request Body **JSON**: Text field key ⌨️ `action` = ⌨️ `list`, Text field key ⌨️ `now` = 🔵 **Now** |
+| 5 | **Set Variable** | name ⌨️ `Response`; input 🔵 **Contents of URL** |
+
+#### Part B: stop if nothing is due
+
+| # | Action | Settings |
+|---|---|---|
+| 6 | **Get Dictionary Value** | **Value** for key ⌨️ `count` in 🔵 **Response** |
+| 7 | **If** | 🔵 **Dictionary Value** (from 6) **is** ⌨️ `0`. If "is" with a number isn't offered, tap the token and set its type to **Number**. |
+| 7a | ↳ **Show Notification** (inside the If) | ⌨️ `Nothing to follow up on today.` |
+| 7b | ↳ **Stop This Shortcut** (inside the If) | none |
+| | **Otherwise** / **End If** | leave Otherwise empty; everything below goes after End If |
+
+#### Part C: pick an item
+
+| # | Action | Settings |
+|---|---|---|
+| 8 | **Get Dictionary Value** | **Value** for key ⌨️ `menu` in 🔵 **Response** |
+| 9 | **Set Variable** | name ⌨️ `Menu`; input 🔵 **Dictionary Value** (from 8) |
+| 10 | **Get Dictionary Value** | **All Keys** in 🔵 **Menu** (no key field) |
+| 11 | **Choose from List** | input 🔵 output of 10 (**Keys** / **Dictionary Value**); prompt ⌨️ `Follow up on…` (optional); Select Multiple **off** |
+| 12 | **Get Dictionary Value** | **Value** for key 🔵 **Selected Item** (from 11; **Chosen Item** on older iOS) in 🔵 **Menu** |
+| 13 | **Set Variable** | name ⌨️ `Item`; input 🔵 **Dictionary Value** (from 12) |
+| 14 | **Get Dictionary Value** | **Value** for key ⌨️ `kind` in 🔵 **Item** |
+| 15 | **Set Variable** | name ⌨️ `Kind`; input 🔵 **Dictionary Value** (from 14) |
+| 16 | **Get Dictionary Value** | **Value** for key ⌨️ `id` in 🔵 **Item** |
+| 17 | **Set Variable** | name ⌨️ `Id`; input 🔵 **Dictionary Value** (from 16) |
+| 18 | **Get Dictionary Value** | **Value** for key ⌨️ `sms_url` in 🔵 **Item** |
+| 19 | **Set Variable** | name ⌨️ `Sms`; input 🔵 **Dictionary Value** (from 18) |
+| 20 | **Get Dictionary Value** | **Value** for key ⌨️ `tel_url` in 🔵 **Item** |
+| 21 | **Set Variable** | name ⌨️ `Tel`; input 🔵 **Dictionary Value** (from 20) |
+
+Line 10 matters: given a dictionary, Choose from List shows each entry's
+contents (raw JSON) on some iOS versions, so the Shortcut lists the keys
+(labels) instead and looks the chosen one up in line 12.
+
+#### Part D: what you did
+
+| # | Action | Settings |
+|---|---|---|
+| 22 | **Choose from Menu** | prompt ⌨️ `What did you do?`; options ⌨️ `Text`, `Call`, `Done`, `Snooze a week`, `Not relevant` |
+
+Under **each** option, add the same three actions. Build them once under Text,
+then long-press each → **Duplicate** and drag the copies into the other options.
+
+| Action | Settings |
+|---|---|
+| **Dictionary** | four items: Text ⌨️ `action` = ⌨️ *(see table below)*; Text ⌨️ `kind` = 🔵 **Kind**; Number ⌨️ `id` = 🔵 **Id**; Text ⌨️ `now` = 🔵 **Now** |
+| **Get Contents of URL** | URL and `x-crm-key` header as in line 4; Method **POST**; Request Body **File** = 🔵 **Dictionary** (from the action above); optional header ⌨️ `Content-Type` = ⌨️ `application/json` |
+| **Get Dictionary Value** | **Value** for key ⌨️ `message` in 🔵 **Contents of URL** |
+
+The ⌨️ `action` value for each option:
+
+| Option | `action` |
+|---|---|
+| Text | `texted` |
+| Call | `called` |
+| Done | `done` |
+| Snooze a week | `snooze` |
+| Not relevant | `dismiss` |
+
+Then finish each option:
+
+- **Text:** **If** 🔵 **Sms** **has any value** → **Open URLs** 🔵 **Sms**;
+  **Otherwise** → **Show Notification** ⌨️ `No single number on file. Reach out another way.`
+  Opening the URL starts a message in Messages; you write it and send it.
+- **Call:** same as Text, with 🔵 **Tel**.
+- **Done, Snooze a week, Not relevant:** **Show Notification** 🔵
+  **Dictionary Value** (the `message`). Show the message, not 🔵 **Contents of
+  URL**, or you'll see raw JSON.
+
+#### Test and troubleshoot
+
+Run the Shortcut, pick an item, choose **Done**: you should see **"Marked
+done."**, and the item is gone the next time you run it. If not:
+
+- **See what's being sent.** Add **Show Content** with input 🔵
+  **Dictionary** right before that option's Get Contents of URL. It should
+  show `kind: follow_up` and a real `id`. If `kind` is blank and `id` is 0,
+  🔵 **Item** is empty. Check line 12: the key must be the 🔵 **Selected
+  Item** token, not typed text, and the dictionary must be 🔵 **Menu**.
+- **Read the server's message.** `Couldn't understand kind "" …` names the
+  field that arrived empty or wrong. `Unauthorized.` means the `x-crm-key`
+  value doesn't match your secret.
+- **Rule out the phone.** Send the same request from Terminal. If this
+  works, the server is fine and the problem is in the Shortcut:
+  ```sh
+  curl -s -X POST https://YOUR_PROJECT_REF.supabase.co/functions/v1/followups \
+    -H "x-crm-key: $KEY" -H 'content-type: application/json' \
+    -d '{"action":"done","kind":"follow_up","id":6}'
+  ```
 
 Text and Call record that you reached out (it counts as contact and closes the
 follow-up), so you don't need to record a note too. When a follow-up involves
 two people or a contact has no phone number, the URL is empty; pick Done after
 you've reached out another way. Birthdays and other dates are only due on the
 day; any choice clears one from the list for the rest of that day. If nothing
-is due, step 4 shows an empty list.
+is due, line 7 shows "Nothing to follow up on today." and stops.
 
 Asking works too: *"What follow-ups are coming up this week?"* in Ask CRM.
 
