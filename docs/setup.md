@@ -43,6 +43,7 @@ cp supabase/functions/.env.example supabase/functions/.env   # git-ignored
 supabase secrets set --env-file supabase/functions/.env
 supabase functions deploy ingest --no-verify-jwt
 supabase functions deploy ask --no-verify-jwt
+supabase functions deploy followups --no-verify-jwt
 ```
 
 `--no-verify-jwt` is required because the Shortcuts authenticate with your
@@ -68,7 +69,12 @@ curl -s -X POST $URL/ask -H 'content-type: application/json' -d '{"question": "x
 
 Follow [iphone-shortcuts.md](iphone-shortcuts.md).
 
-## 7. The Claude skill (optional)
+## 7. Proactive follow-ups (optional)
+
+Morning push reminders to check in about trips, interviews and other things
+people mentioned: [follow-ups.md](follow-ups.md).
+
+## 8. The Claude skill (optional)
 
 So you can ask and edit in a normal Claude conversation:
 
@@ -84,7 +90,7 @@ flagged voice notes."*
 
 ## Updating later
 
-`git pull`, then `supabase db push` for new migrations and redeploy both
+`git pull`, then `supabase db push` for new migrations and redeploy the
 functions. To rotate the shared secret: `supabase secrets set CRM_SHARED_SECRET=…`
 and update both Shortcuts.
 

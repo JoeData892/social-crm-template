@@ -38,6 +38,11 @@ Claude (chat) ── social-crm skill ──▶ same database, same crm_apply_pl
   and Claude gets the error and fixes the plan.
 - **Ambiguity is a question, not a guess.** Two Chrises → it files everything
   else and asks you which one in the notification.
+- **Proactive follow-ups** (`supabase/functions/followups`): follow-ups get dates
+  ("back from the Gunks Nov 8" → remind Nov 10). Each morning, if anything is
+  due, one Pushover notification lists who to check in with and about what. It
+  never contacts anyone itself. A Follow-ups Shortcut opens Messages or the
+  dialer and logs that you reached out. See [docs/follow-ups.md](docs/follow-ups.md).
 - **Retrieval** (`supabase/functions/ask`) combines keyword search and search by
   meaning over interactions, follow-ups, original transcripts and profiles, plus
   tools for "who's overdue", birthdays, recent interactions and name lists.
@@ -50,11 +55,12 @@ Claude (chat) ── social-crm skill ──▶ same database, same crm_apply_pl
 | `groups` | Clubs, teams, friend groups, group chats, workplaces, linked to people |
 | `events` | Parties, trips, weddings, with who was there |
 | `interactions` | Dated log of real contact (in person, call, text…) with participants |
-| `hooks` | Follow-ups from an interaction ("moving to Denver in May"), open until resolved |
+| `hooks` | Follow-ups from an interaction ("moving to Denver in May"), with kind, dates and a reminder date; open until resolved |
+| `important_dates` | Anniversaries, kids' birthdays and other yearly dates per person |
 | `rosters` | Name lists from events, kept as text so 40 sign-ups don't become 40 contacts; recurring names surface for promotion |
 | `voice_notes` | Every transcript, its status (`done`, `needs_review`, `error`) and the reply you got |
 | `changelog` | Audit trail of every change and why |
-| `relationship_tiers`, `follow_up_cadences` | Editable choice lists (Close Friend … Building …; Weekly … Yearly) |
+| `relationship_tiers`, `follow_up_cadences`, `hook_kinds` | Editable choice lists (tiers; contact cadences; days after a trip/interview/… to check in) |
 
 Changes from the template: Supabase instead of Airtable (no record or API-call
 caps, search by meaning, an atomic write path); follow-ups have their own table;
@@ -71,7 +77,8 @@ a regular Claude chat.
 ## Cost
 
 Supabase's free tier covers the database and functions. Claude API usage is
-pay-per-use. With the default model (Claude Opus 5.5 at medium effort), expect
+pay-per-use; the morning reminders use no Claude calls. Pushover is a one-time
+in-app purchase after a free trial. With the default model (Claude Opus 5.5 at medium effort), expect
 roughly **$0.10–0.20 per voice note** and a few cents per question; the cost grows
 slowly with the size of your contact list. Set `CRM_MODEL` to a smaller model,
 or `CRM_INGEST_EFFORT=low`, to trade some filing quality for cost. Set a spend
@@ -90,7 +97,8 @@ limit in the Anthropic console either way.
   (`.env` is git-ignored). The secret is also stored in your two Shortcuts, so
   don't share them.
 - **Least privilege.** `ask` has read-only tools. `ingest` has exactly one write
-  path, the validated plan.
+  path, the validated plan. `followups` can only mark follow-ups and log contact.
+  Nothing in the system can message or call anyone.
 - **Logs.** Functions log errors, never transcripts.
 - **What leaves your phone.** The dictated text (Apple's dictation runs
   on-device or with Apple, per your iPhone settings) goes to your Supabase

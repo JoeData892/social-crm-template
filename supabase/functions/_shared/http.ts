@@ -56,21 +56,32 @@ export function requireText(body: Record<string, unknown>, key: string, max: num
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 // The phone sends its clock as ISO 8601 with offset (e.g. 2026-10-22T08:15:00-04:00).
-// Its first ten characters are the user's local date, which is what "today",
+// Its date and hour are the user's local ones, which is what "today",
 // "yesterday" and "last Friday" are relative to. Falls back to CRM_TIMEZONE.
-export function localToday(now: unknown): { date: string; weekday: string; spokenAt: string | null } {
+export function localToday(now: unknown): { date: string; weekday: string; hour: number; spokenAt: string | null } {
   let date: string;
+  let hour: number;
   let spokenAt: string | null = null;
   if (typeof now === "string" && /^\d{4}-\d{2}-\d{2}/.test(now) && !Number.isNaN(Date.parse(now))) {
     date = now.slice(0, 10);
+    hour = /^.{10}T\d{2}/.test(now) ? Number(now.slice(11, 13)) : 12;
     spokenAt = new Date(now).toISOString();
   } else {
     const tz = Deno.env.get("CRM_TIMEZONE") ?? "UTC";
-    date = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" })
-      .format(new Date());
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: tz,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(new Date());
+    const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+    date = `${get("year")}-${get("month")}-${get("day")}`;
+    hour = Number(get("hour"));
   }
   const [y, m, d] = date.split("-").map(Number);
-  return { date, weekday: WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()], spokenAt };
+  return { date, weekday: WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()], hour, spokenAt };
 }
 
 // Run work after the response is sent (Supabase Edge Runtime), or detached elsewhere.
