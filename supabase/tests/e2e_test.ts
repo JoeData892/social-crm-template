@@ -3,7 +3,7 @@
 // (a) plays the Claude API from a script and (b) proxies /rest/v1 to PostgREST
 // the way the Supabase gateway does, then runs each function as a subprocess.
 
-import { createClient } from "npm:@supabase/supabase-js@2.117.2";
+import { createClient } from "../functions/_shared/deps.ts";
 
 const REST_URL = Deno.env.get("REST_URL")!;
 const JWT_SECRET = Deno.env.get("JWT_SECRET")!;
@@ -75,8 +75,19 @@ function lastToolResult(req: Req): any {
   return Array.isArray(last.content) ? last.content.find((b: { type: string }) => b.type === "tool_result") : undefined;
 }
 
+// ---- stub Pushover --------------------------------------------------------
+
+const pushes: URLSearchParams[] = [];
+let pushoverFails = false;
+const pushCount = () => pushes.length;
+
 const server = Deno.serve({ port: STUB_PORT, onListen: () => {} }, async (req) => {
   const url = new URL(req.url);
+  if (url.pathname === "/pushover") {
+    if (pushoverFails) return Response.json({ status: 0, errors: ["stub failure"] }, { status: 500 });
+    pushes.push(new URLSearchParams(await req.text()));
+    return Response.json({ status: 1 });
+  }
   if (url.pathname.startsWith("/rest/v1/")) {
     const target = REST_URL + url.pathname.slice("/rest/v1".length) + url.search;
     const headers = new Headers(req.headers);
@@ -377,6 +388,111 @@ Deno.test("ask answers read-only questions with tools", async () => {
   } finally {
     await stop(fn);
     seen.length = 0;
+  }
+});
+
+Deno.test("ingest passes hook timing through and reports the reminder date", async () => {
+  script = [
+    (r) => {
+      const plan = r.body.tools.find((t: { name: string }) => t.name === "save_plan").input_schema;
+      const hook = plan.properties.interactions.items.properties.hooks.items.properties;
+      assert(hook.kind && hook.happens_on && hook.follow_up_on, "hook timing fields offered to Claude");
+      assert(plan.properties.update_hooks, "update_hooks offered");
+      return toolUse("save_plan", {
+        interactions: [{
+          type: "Phone Call",
+          summary: "Called Sam",
+          people: [String(SAM)],
+          hooks: [{ text: "Philly marathon", kind: "event", happens_on: "2026-11-08", date_precision: "exact" }],
+        }],
+        confirmation: "Logged a call with Sam.",
+      });
+    },
+  ];
+  const fn = await startFunction("ingest");
+  try {
+    const body =
+      await (await post({ text: "called sam, he's running the philly marathon on nov 8", now: "2026-10-26T18:00:00-04:00" }))
+        .json();
+    assert(body.ok && body.message.includes("Reminder Nov 10: Philly marathon"), JSON.stringify(body));
+  } finally {
+    await stop(fn);
+    seen.length = 0;
+  }
+});
+
+Deno.test("followups: morning push only in the window, only when something is due, once a day", async () => {
+  await one(sb.from("people").update({ phone: "+1 (555) 000-1234" }).eq("id", SAM));
+  const fn = await startFunction("followups", {
+    PUSHOVER_API_URL: `${STUB}/pushover`,
+    PUSHOVER_TOKEN: "tok",
+    PUSHOVER_USER: "usr",
+  });
+  const nudge = async (now: string) => await (await post({ action: "nudge", now })).json();
+  try {
+    assert((await nudge("2026-11-12T08:30:00-05:00")).status === "outside_window", "8:30 is too early");
+    assert((await nudge("2026-11-12T13:30:00-05:00")).status === "outside_window", "13:30 is past the window");
+    assert((await nudge("2026-10-26T09:30:00-04:00")).status === "nothing_due", "nothing due Oct 26");
+    assert(pushCount() === 0, "no push when nothing is due");
+
+    const sent = await nudge("2026-11-12T09:30:00-05:00");
+    assert(sent.status === "sent" && sent.count === 2, JSON.stringify(sent));
+    assert(pushCount() === 1, "exactly one push");
+    const p = pushes[0];
+    assert(p.get("token") === "tok" && p.get("user") === "usr", "credentials sent");
+    assert(p.get("title") === "2 follow-ups today", `title: ${p.get("title")}`);
+    const msg = p.get("message")!;
+    assert(msg.includes("• Ask Sam Rivera about Philly marathon (was Nov 8; came up Oct 26)"), msg);
+    assert(msg.includes("Gunks climbing trip next month"), msg);
+    assert(p.get("url") === "shortcuts://run-shortcut?name=Follow-ups", `url: ${p.get("url")}`);
+
+    assert((await nudge("2026-11-12T10:30:00-05:00")).status === "already_ran", "second run same day does nothing");
+    assert(pushCount() === 1, "still one push");
+    assert((await nudge("2026-11-13T09:30:00-05:00")).status === "nothing_due", "not re-pushed the next day");
+
+    pushoverFails = true;
+    const failed = await post({ action: "nudge", now: "2026-11-15T09:30:00-05:00" });
+    assert(failed.status === 500, `push failure surfaces: ${failed.status}`);
+    await failed.body?.cancel();
+    const runs = await one<unknown[]>(sb.from("nudge_runs").select("run_date").eq("run_date", "2026-11-15"));
+    assert(runs.length === 0, "failed run released so the next hour retries");
+    pushoverFails = false;
+    assert((await nudge("2026-11-15T10:30:00-05:00")).status === "sent", "retry an hour later succeeds");
+    assert(pushCount() === 2, "second push sent");
+  } finally {
+    pushoverFails = false;
+    await stop(fn);
+  }
+});
+
+Deno.test("followups: Shortcut list and actions", async () => {
+  const fn = await startFunction("followups");
+  try {
+    const list = await (await post({ action: "list", now: "2026-11-15T12:00:00-05:00" })).json();
+    assert(list.ok && list.count === 2, JSON.stringify(list));
+    const marathon = list.menu["Sam Rivera: Philly marathon"];
+    assert(marathon && marathon.kind === "follow_up", `menu keys: ${Object.keys(list.menu)}`);
+    assert(marathon.sms_url === "sms:+15550001234" && marathon.tel_url === "tel:+15550001234", "phone links");
+    const shared = Object.values(list.menu).find((i) => (i as { label: string }).label.includes("Gunks")) as { sms_url: string };
+    assert(shared.sms_url === "", "no single number for a shared follow-up");
+
+    const acted = await (await post({ action: "texted", kind: "follow_up", id: marathon.id, now: "2026-11-15T12:05:00-05:00" }))
+      .json();
+    assert(acted.ok && acted.message === "Logged a text.", JSON.stringify(acted));
+    const sam = await one<{ last_contacted: string }>(sb.from("people").select("last_contacted").eq("id", SAM).single());
+    assert(sam.last_contacted === "2026-11-15", "texting counted as contact");
+
+    const after = await (await post({ action: "list", now: "2026-11-15T12:10:00-05:00" })).json();
+    assert(after.count === 1 && !after.menu["Sam Rivera: Philly marathon"], "handled item drops off the list");
+
+    const bad = await post({ action: "send_for_me", kind: "follow_up", id: marathon.id });
+    assert(bad.status === 400, `unknown action rejected: ${bad.status}`);
+    await bad.body?.cancel();
+    const unauth = await post({ action: "list" }, "wrong");
+    assert(unauth.status === 401, "needs the shared secret");
+    await unauth.body?.cancel();
+  } finally {
+    await stop(fn);
   }
 });
 

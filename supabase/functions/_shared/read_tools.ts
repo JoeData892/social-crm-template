@@ -70,6 +70,14 @@ export function readTools(client: SupabaseClient, today: string): Record<string,
       run: async ({ days }) => out(await rpc(client, "crm_upcoming_birthdays", { p_days: days, p_today: today })),
     }),
 
+    upcoming_follow_ups: tool({
+      name: "upcoming_follow_ups",
+      description:
+        "Open follow-ups (things to ask people about) whose reminder date falls within the next N days, including overdue ones, soonest first.",
+      schema: z.object({ days: z.number().int().min(0).max(90) }),
+      run: async ({ days }) => out(await rpc(client, "crm_upcoming_follow_ups", { p_today: today, p_days: days })),
+    }),
+
     recent_interactions: tool({
       name: "recent_interactions",
       description: "Interactions on or after a date, newest first, with participants and still-open hooks.",

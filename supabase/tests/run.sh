@@ -22,8 +22,9 @@ until pg_isready -q; do sleep 0.5; done
 sleep 1
 
 psql -q -v ON_ERROR_STOP=1 -f supabase/tests/bootstrap_local.sql
-psql -q -v ON_ERROR_STOP=1 -f supabase/migrations/*.sql
+for m in supabase/migrations/*.sql; do psql -q -v ON_ERROR_STOP=1 -f "$m"; done
 psql -v ON_ERROR_STOP=1 -f supabase/tests/crm_test.sql | grep -E "PASSED|ERROR"
+psql -v ON_ERROR_STOP=1 -f supabase/tests/follow_ups_test.sql | grep -E "PASSED|ERROR"
 
 docker run -d --name crm-test-rest --network host \
   -e PGRST_DB_URI="postgres://authenticator:authenticator@127.0.0.1:$PG_PORT/postgres" \

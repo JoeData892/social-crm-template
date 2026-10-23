@@ -12,6 +12,18 @@ const text = z.string().min(1);
 // Keep in sync with the CHECK constraints in the migration.
 export const INTERACTION_TYPES = ["In Person", "Phone Call", "Text", "Social Media", "Email", "Video Call"] as const;
 export const GROUP_TYPES = ["Friend Group", "Social Circle", "Group Chat", "Club", "Community", "Workplace", "Other"] as const;
+export const HOOK_KINDS = [
+  "trip",
+  "interview",
+  "medical",
+  "move",
+  "baby",
+  "wedding",
+  "new_job",
+  "exam",
+  "event",
+  "other",
+] as const;
 export const ROSTER_SOURCES = [
   "Event sign-up",
   "Met in person",
@@ -49,6 +61,14 @@ const PersonSet = z.strictObject({
   how_we_met: text.optional(),
 });
 
+const hookTiming = {
+  kind: z.enum(HOOK_KINDS).optional(),
+  happens_on: isoDate.describe("When it happens or starts, resolved against today").optional(),
+  happens_until: isoDate.describe("When it ends, for multi-day things like trips").optional(),
+  date_precision: z.enum(["exact", "week", "month", "approx"]).optional(),
+  follow_up_on: isoDate.describe("Only when the user says when to check in; otherwise computed from kind and dates").optional(),
+};
+
 export const Plan = z.strictObject({
   occurred_on: isoDate.describe("Date the note is about; default for dates below. Usually today.").optional(),
   groups: z.array(z.strictObject({
@@ -81,6 +101,12 @@ export const Plan = z.strictObject({
       notes: text.describe("Last resort for facts with no field").optional(),
     }).optional(),
     groups: z.array(ref).describe("Group refs or ids to link (links are only ever added)").optional(),
+    dates: z.array(z.strictObject({
+      label: text.describe('e.g. "Wedding anniversary", "Daughter Ellie\'s birthday"'),
+      date: isoDate.describe("Use year 1904 when the year is unknown"),
+      yearly: z.boolean().optional(),
+      remind_days_before: z.number().int().min(0).max(60).optional(),
+    })).describe("Dates worth a reminder each year, other than their own birthday").optional(),
     partner: ref.describe("Their partner, when the partner is (or is being made) a contact").optional(),
   })).optional(),
   events: z.array(z.strictObject({
@@ -100,14 +126,21 @@ export const Plan = z.strictObject({
     notes: text.describe("Details of the conversation worth keeping that aren't facts about a person").optional(),
     people: z.array(ref).min(1),
     hooks: z.array(z.strictObject({
-      text: text.describe("Forward-looking topic, in the user's words, shortened"),
+      text: text.describe(
+        'Forward-looking topic, in the user\'s words, shortened, with no relative dates ("Gunks climbing trip", not "trip next month")',
+      ),
       person: ref.describe("Who it is about, if it is about one participant").optional(),
+      ...hookTiming,
     })).optional(),
   })).optional(),
   resolve_hooks: z.array(z.strictObject({
     id: z.number().int().describe("hook_id from get_person"),
     resolution: text.describe("How it turned out, briefly").optional(),
   })).optional(),
+  update_hooks: z.array(z.strictObject({
+    id: z.number().int().describe("hook_id from get_person"),
+    ...hookTiming,
+  })).describe('Changed timing for an open hook ("the trip moved to December", "remind me in two weeks")').optional(),
   rosters: z.array(z.strictObject({
     name: text.describe("Source or host, event, and date"),
     date: isoDate.optional(),

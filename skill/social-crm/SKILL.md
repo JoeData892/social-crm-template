@@ -34,12 +34,13 @@ SQL works. If no access path is available, say so; never guess at data.
 | Recent interactions | `select * from crm_recent_interactions(current_date - 14);` |
 | A name on past event rosters | `select * from crm_search_rosters('Jo Okafor');` |
 | Names that keep showing up | `select * from crm_roster_recurrence(3);` |
+| Follow-ups due today / coming up | `select * from crm_due_reminders(current_date);` / `select * from crm_upcoming_follow_ups(current_date, 14);` |
 | Whole directory | `select * from crm_directory();` |
 
 Plain `select`s on the tables (`people`, `groups`, `person_groups`, `events`,
 `event_people`, `interactions`, `interaction_people`, `hooks`, `rosters`,
-`roster_people`, `voice_notes`, `changelog`, `relationship_tiers`,
-`follow_up_cadences`) are fine for anything else. Never select the `embedding`
+`roster_people`, `voice_notes`, `changelog`, `important_dates`, `nudge_runs`,
+`relationship_tiers`, `follow_up_cadences`, `hook_kinds`) are fine for anything else. Never select the `embedding`
 columns; they are large and meaningless to read.
 
 `crm_search` here is keyword search only (pass no embedding); search by meaning
@@ -53,6 +54,12 @@ personal details (partner, family and pets, interests). Short enough for a phone
 **Bump scan** ("who am I letting go cold"): `crm_people_due`, report rows with
 `due = true`, never-contacted first, then most overdue, with phone numbers and an
 open hook as an opener when one exists. Read-only.
+
+**Follow-ups**: hooks carry `kind`, `happens_on`/`happens_until` and a
+`follow_up_on` reminder date; a morning push lists what's due. To mark one
+handled, snooze it, or record that the user texted/called about it:
+`select crm_follow_up_action('follow_up', <hook id>, 'done' | 'snooze' | 'dismiss' | 'texted' | 'called');`
+Never contact anyone on the user's behalf.
 
 ## Writing: only through `crm_apply_plan`
 
