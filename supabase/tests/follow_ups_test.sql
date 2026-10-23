@@ -102,6 +102,15 @@ begin
   perform crm_follow_up_action('birthday', maya, 'called', '2026-10-30');
   perform pg_temp.check(exists (select 1 from interactions where summary = 'Birthday phone call'), 'birthday call logged');
   perform pg_temp.check((select last_contacted from people where id = maya) = '2026-10-30', 'birthday call counts as contact');
+  perform pg_temp.check(not exists (select 1 from crm_due_reminders('2026-10-30', false) where kind = 'birthday'), 'called birthday leaves the list');
+  r := crm_follow_up_action('birthday', maya, 'called', '2026-10-30');
+  perform pg_temp.check(r ->> 'message' = 'Already handled today.', 'second tap: ' || (r ->> 'message'));
+  perform pg_temp.check((select count(*) from interactions where summary = 'Birthday phone call') = 1, 'second tap logs nothing');
+  perform pg_temp.check(exists (select 1 from crm_due_reminders('2027-10-30', false) where kind = 'birthday'), 'birthday back next year');
+
+  r := crm_follow_up_action('date', (select id from important_dates where label = 'Wedding anniversary'), 'done', '2026-10-30');
+  perform pg_temp.check(r ->> 'message' = 'Cleared for today.', 'date done message: ' || (r ->> 'message'));
+  perform pg_temp.check(not exists (select 1 from crm_due_reminders('2026-10-30', false) where kind = 'date'), 'done date leaves the list');
 
   begin
     perform crm_follow_up_action('follow_up', k, 'send_text_for_me', '2026-11-20');
@@ -144,6 +153,7 @@ begin
   perform pg_temp.check(crm_next_occurrence('1990-01-05', '2026-12-31') = '2027-01-05', 'wraps to next year');
   if exists (select 1 from pg_roles where rolname = 'anon') then
     perform pg_temp.check(not has_table_privilege('anon', 'public.important_dates', 'select'), 'anon locked out of new tables');
+    perform pg_temp.check(not has_table_privilege('anon', 'public.date_reminders_handled', 'select'), 'anon locked out of handled dates');
     perform pg_temp.check(not has_function_privilege('anon', 'public.crm_follow_up_action(text, bigint, text, date)', 'execute'), 'anon cannot act');
   end if;
   perform pg_temp.check((select bool_and(rowsecurity) from pg_tables where schemaname = 'public'), 'RLS on every table');
