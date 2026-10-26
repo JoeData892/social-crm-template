@@ -203,6 +203,9 @@ done."**, and the item is gone the next time you run it. If not:
   show `kind: follow_up` and a real `id`. If `kind` is blank and `id` is 0,
   🔵 **Item** is empty. Check line 12: the key must be the 🔵 **Selected
   Item** token, not typed text, and the dictionary must be 🔵 **Menu**.
+- **`Unknown action.`** That's the old `followups` function, which only took an
+  exact lowercase action and a numeric id. Redeploy the current one:
+  `git pull`, then `supabase functions deploy followups --no-verify-jwt`.
 - **Read the server's message.** `Couldn't understand kind "" …` names the
   field that arrived empty or wrong. `Unauthorized.` means the `x-crm-key`
   value doesn't match your secret.
